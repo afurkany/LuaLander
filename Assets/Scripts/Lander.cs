@@ -96,7 +96,7 @@ public class Lander : MonoBehaviour
     }
 
     /// <summary>
-    /// Calculates the max landing score to get when the lander is fully stopped.
+    /// Calculates the landing score to get when the lander first time touched to landing pad.
     /// </summary>
     private float CalculateLandingScore(float maxLandingScoreToGet, float landingSpeed, float landingDotProduct)
     {
