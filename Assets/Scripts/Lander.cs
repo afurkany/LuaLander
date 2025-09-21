@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -5,7 +6,13 @@ public class Lander : MonoBehaviour
 {
     private Rigidbody2D landerRigidBody2D;
     private float landingScore = 10.0f;
+    private float totalFuelAmount = 10.0f;
     private bool isLanderStopped = false;
+
+    public event EventHandler OnUpForce;
+    public event EventHandler OnLeftForce;
+    public event EventHandler OnRightForce;
+    public event EventHandler OnBeforeForce;
 
     private void Awake()
     {
@@ -14,22 +21,47 @@ public class Lander : MonoBehaviour
 
     private void FixedUpdate()
     {
+        OnBeforeForce?.Invoke(this, EventArgs.Empty);
+        if (totalFuelAmount <= 0f)
+        {
+            return;
+        }
+
+        if (
+            Keyboard.current.upArrowKey.isPressed ||
+            Keyboard.current.leftArrowKey.isPressed ||
+            Keyboard.current.rightArrowKey.isPressed
+        )
+        {
+            ConsumeFuel();
+            Debug.Log("Remained fuel: " + totalFuelAmount);
+        }
+
         if (Keyboard.current.upArrowKey.isPressed)
         {
             const float thrustForce = 15.0f;
             landerRigidBody2D.AddForce(thrustForce * transform.up * Time.deltaTime, ForceMode2D.Impulse);
+
+            // set event for lander visual
+            OnUpForce?.Invoke(this, EventArgs.Empty);
         }
 
         if (Keyboard.current.leftArrowKey.isPressed)
         {
             const float rotationForce = 1.0f;
             landerRigidBody2D.AddTorque(rotationForce * Time.deltaTime, ForceMode2D.Impulse);
+
+            // set event for lander visual
+            OnLeftForce?.Invoke(this, EventArgs.Empty);
         }
 
         if (Keyboard.current.rightArrowKey.isPressed)
         {
             const float rotationForce = -1.0f;
             landerRigidBody2D.AddTorque(rotationForce * Time.deltaTime, ForceMode2D.Impulse);
+
+            // set event for lander visual
+            OnRightForce?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -76,11 +108,12 @@ public class Lander : MonoBehaviour
         landingScore = CalculateLandingScore(
             maxLandingScoreToGet,
             collision2D.relativeVelocity.magnitude,
-            dotProductOnLanding
+            dotProductOnLanding,
+            landingPad.GetScoreMultiplier()
         );
     }
 
-    private void OnCollisionStay2D(Collision2D collision)
+    private void OnCollisionStay2D(Collision2D collision2D)
     {
         // print the calculated score just the first time when the lander is fully stopped
         if (
@@ -95,10 +128,25 @@ public class Lander : MonoBehaviour
         }
     }
 
+    private void OnTriggerEnter2D(Collider2D collider2D)
+    {
+        if (collider2D.gameObject.TryGetComponent(out FuelPickup fuelPickup))
+        {
+            float AddFuelAmount = 10.0f;
+            totalFuelAmount += AddFuelAmount;
+            fuelPickup.SelfDestroy();
+        }
+    }
+
     /// <summary>
     /// Calculates the landing score to get when the lander first time touched to landing pad.
     /// </summary>
-    private float CalculateLandingScore(float maxLandingScoreToGet, float landingSpeed, float landingDotProduct)
+    private float CalculateLandingScore(
+        float maxLandingScoreToGet,
+        float landingSpeed,
+        float landingDotProduct,
+        int scoreMultiplier
+    )
     {
         // calculate landing angle score
         const float landingAngleScorePunishmentConstant = 10.0f;
@@ -110,7 +158,16 @@ public class Lander : MonoBehaviour
         float landingSpeedScorePunishment = landingSpeed * landingSpeedScorePunishmentConstant;
         maxLandingScoreToGet -= landingSpeedScorePunishment;
 
+        // update the score with multiplier
+        maxLandingScoreToGet *= scoreMultiplier;
+
         // return max rounded landing score or zero
-        return Mathf.Round(Mathf.Max(maxLandingScoreToGet, 0) * 100.0f) * 0.01f;
+        return Mathf.RoundToInt(Mathf.Max(maxLandingScoreToGet, 0));
+    }
+
+    private void ConsumeFuel()
+    {
+        const float fuelConsumptionConstant = 1.0f;
+        totalFuelAmount -= fuelConsumptionConstant * Time.deltaTime;
     }
 }
