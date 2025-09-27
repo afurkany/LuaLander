@@ -9,6 +9,7 @@ public class Lander : MonoBehaviour
     private Rigidbody2D landerRigidBody2D;
     private float maxLandingScore = 100.0f;
     private int actualLandingScore;
+    private float maxTotalFuelAmount = 10.0f;
     private float totalFuelAmount = 10.0f;
     private bool isLanderStopped = false;
     private const float maxLandingRotationLimit = 0.9f;
@@ -144,8 +145,9 @@ public class Lander : MonoBehaviour
     {
         if (collider2D.gameObject.TryGetComponent(out FuelPickup fuelPickup))
         {
-            float AddFuelAmount = 10.0f;
+            float AddFuelAmount = 5.0f;
             totalFuelAmount += AddFuelAmount;
+            totalFuelAmount = Mathf.Min(totalFuelAmount, maxTotalFuelAmount);
             fuelPickup.SelfDestroy();
         }
         else if (collider2D.gameObject.TryGetComponent(out CoinPickup coinPickup))
@@ -183,5 +185,25 @@ public class Lander : MonoBehaviour
     {
         const float fuelConsumptionConstant = 1.0f;
         totalFuelAmount -= fuelConsumptionConstant * Time.deltaTime;
+    }
+
+    public float GetSpeedX()
+    {
+        return landerRigidBody2D.linearVelocityX * 10.0f;
+    }
+
+    public float GetSpeedY()
+    {
+        return landerRigidBody2D.linearVelocityY * 10.0f;
+    }
+
+    public float GetFuelAmount()
+    {
+        return totalFuelAmount;
+    }
+
+    public float GetFuelAmountNormalized()
+    {
+        return totalFuelAmount / maxTotalFuelAmount;
     }
 }
