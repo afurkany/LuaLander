@@ -4,18 +4,31 @@ using UnityEngine.InputSystem;
 
 public class Lander : MonoBehaviour
 {
+    public static Lander Instance { get; private set; }
+
     private Rigidbody2D landerRigidBody2D;
-    private float landingScore = 10.0f;
+    private float maxLandingScore = 100.0f;
+    private int actualLandingScore;
     private float totalFuelAmount = 10.0f;
     private bool isLanderStopped = false;
+    private const float maxLandingRotationLimit = 0.9f;
+    private const float maxSuccessfulLandingVelocityLimit = 3.5f;
 
     public event EventHandler OnUpForce;
     public event EventHandler OnLeftForce;
     public event EventHandler OnRightForce;
     public event EventHandler OnBeforeForce;
+    public event EventHandler OnCoinPickup;
+
+    public event EventHandler<OnLanderLandEventArgs> OnLanderLand;
+    public class OnLanderLandEventArgs : EventArgs
+    {
+        public int landingScore;
+    }
 
     private void Awake()
     {
+        Instance = this;
         landerRigidBody2D = GetComponent<Rigidbody2D>();
     }
 
@@ -67,7 +80,7 @@ public class Lander : MonoBehaviour
 
     private void OnCollisionEnter2D(Collision2D collision2D)
     {
-        float maxLandingScoreToGet = landingScore;
+        float maxLandingScoreToGet = maxLandingScore;
 
         // Check if the landing is on landing pad
         if (!collision2D.gameObject.TryGetComponent(out LandingPad landingPad))
@@ -81,7 +94,6 @@ public class Lander : MonoBehaviour
         }
 
         // Define a max landing speed for successful landing
-        const float maxSuccessfulLandingVelocityLimit = 3.5f;
         if (collision2D.relativeVelocity.magnitude > maxSuccessfulLandingVelocityLimit)
         {
             Debug.Log("Landing is too fast!");
@@ -94,7 +106,6 @@ public class Lander : MonoBehaviour
 
         // Define a max langding angle for successful landing
         float dotProductOnLanding = Vector2.Dot(Vector2.up, transform.up);
-        const float maxLandingRotationLimit = 0.9f;
         if (dotProductOnLanding < maxLandingRotationLimit)
         {
             Debug.Log("Landing angle is too steep!");
@@ -105,7 +116,7 @@ public class Lander : MonoBehaviour
             return;
         }
 
-        landingScore = CalculateLandingScore(
+        actualLandingScore = CalculateLandingScore(
             maxLandingScoreToGet,
             collision2D.relativeVelocity.magnitude,
             dotProductOnLanding,
@@ -124,7 +135,8 @@ public class Lander : MonoBehaviour
         {
             isLanderStopped = true;
             Debug.Log("Landing is successful!");
-            Debug.Log("Landing Score: " + landingScore);
+            Debug.Log("Landing Score: " + actualLandingScore);
+            OnLanderLand?.Invoke(this, new OnLanderLandEventArgs { landingScore = actualLandingScore });
         }
     }
 
@@ -136,12 +148,14 @@ public class Lander : MonoBehaviour
             totalFuelAmount += AddFuelAmount;
             fuelPickup.SelfDestroy();
         }
+        else if (collider2D.gameObject.TryGetComponent(out CoinPickup coinPickup))
+        {
+            OnCoinPickup?.Invoke(this, EventArgs.Empty);
+            coinPickup.SelfDestroy();
+        }
     }
 
-    /// <summary>
-    /// Calculates the landing score to get when the lander first time touched to landing pad.
-    /// </summary>
-    private float CalculateLandingScore(
+    private int CalculateLandingScore(
         float maxLandingScoreToGet,
         float landingSpeed,
         float landingDotProduct,
@@ -150,11 +164,11 @@ public class Lander : MonoBehaviour
     {
         // calculate landing angle score
         const float landingAngleScorePunishmentConstant = 10.0f;
-        float landingAngleScorePunishment = Mathf.Abs(1.0f - landingDotProduct) * Mathf.Pow(landingAngleScorePunishmentConstant, 2);
-        maxLandingScoreToGet -= landingAngleScorePunishment;
+        float landingAnglePunishmentRatio = 1.0f - landingAngleScorePunishmentConstant * (1.0f - landingDotProduct);
+        maxLandingScoreToGet *= landingAnglePunishmentRatio;
 
         // calculate landing speed score
-        const float landingSpeedScorePunishmentConstant = 0.5f;
+        const float landingSpeedScorePunishmentConstant = 5f;
         float landingSpeedScorePunishment = landingSpeed * landingSpeedScorePunishmentConstant;
         maxLandingScoreToGet -= landingSpeedScorePunishment;
 
