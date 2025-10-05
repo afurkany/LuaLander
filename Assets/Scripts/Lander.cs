@@ -1,12 +1,17 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 public class Lander : MonoBehaviour
 {
     public static Lander Instance { get; private set; }
 
     private Rigidbody2D landerRigidBody2D;
+    private float landingSpeed;
+    private int landingMultiplier;
+    private float dotProductOnLanding;
+    private LandingType landingType = LandingType.Success;
+
     private float maxLandingScore = 100.0f;
     private int actualLandingScore;
     private float maxTotalFuelAmount = 10.0f;
@@ -19,18 +24,42 @@ public class Lander : MonoBehaviour
     public event EventHandler OnLeftForce;
     public event EventHandler OnRightForce;
     public event EventHandler OnBeforeForce;
+    public event EventHandler OnAfterForce;
     public event EventHandler OnCoinPickup;
+    public event EventHandler OnFuelPickup;
 
     public event EventHandler<OnLanderLandEventArgs> OnLanderLand;
     public class OnLanderLandEventArgs : EventArgs
     {
+        public float landingSpeed;
+        public float landingAngle;
+        public int landingMultiplier;
         public int landingScore;
+        public LandingType landingType;
+        public string crashReason;
     }
+
+    public enum LandingType
+    {
+        Success,
+        WrongLandingArea,
+        TooSteepAngle,
+        TooFastLanding,
+    }
+
+    private Dictionary<LandingType, string> crashReasonDict = new()
+    {
+        { LandingType.Success, ""},
+        { LandingType.WrongLandingArea, "Wrong landing area!" },
+        { LandingType.TooSteepAngle, "Too steep landing angle!" },
+        { LandingType.TooFastLanding, "Too fast landing speed!" },
+    };
 
     private void Awake()
     {
         Instance = this;
         landerRigidBody2D = GetComponent<Rigidbody2D>();
+        landerRigidBody2D.gravityScale = 0f;
     }
 
     private void FixedUpdate()
@@ -41,103 +70,117 @@ public class Lander : MonoBehaviour
             return;
         }
 
-        if (
-            Keyboard.current.upArrowKey.isPressed ||
-            Keyboard.current.leftArrowKey.isPressed ||
-            Keyboard.current.rightArrowKey.isPressed
-        )
+        if (!isLanderStopped)
         {
-            ConsumeFuel();
-            Debug.Log("Remained fuel: " + totalFuelAmount);
-        }
+            if (
+                GameInput.Instance.IsUpActionPressed() ||
+                GameInput.Instance.IsLeftActionPressed() ||
+                GameInput.Instance.IsRightActionPressed() ||
+                GameInput.Instance.GetMovementInputVector() != Vector2.zero
+            )
+            {
+                OnAfterForce?.Invoke(this, EventArgs.Empty);
+                landerRigidBody2D.gravityScale = 0.9f;
+                ConsumeFuel();
+            }
 
-        if (Keyboard.current.upArrowKey.isPressed)
-        {
-            const float thrustForce = 15.0f;
-            landerRigidBody2D.AddForce(thrustForce * transform.up * Time.deltaTime, ForceMode2D.Impulse);
+            float gamepadDeadzone = .4f;
+            if (GameInput.Instance.IsUpActionPressed() || GameInput.Instance.GetMovementInputVector().y > gamepadDeadzone)
+            {
+                const float thrustForce = 15.0f;
+                landerRigidBody2D.AddForce(thrustForce * transform.up * Time.deltaTime, ForceMode2D.Impulse);
 
-            // set event for lander visual
-            OnUpForce?.Invoke(this, EventArgs.Empty);
-        }
+                // set event for lander visual
+                OnUpForce?.Invoke(this, EventArgs.Empty);
+            }
 
-        if (Keyboard.current.leftArrowKey.isPressed)
-        {
-            const float rotationForce = 1.0f;
-            landerRigidBody2D.AddTorque(rotationForce * Time.deltaTime, ForceMode2D.Impulse);
+            if (GameInput.Instance.IsLeftActionPressed() || GameInput.Instance.GetMovementInputVector().x < -gamepadDeadzone)
+            {
+                const float rotationForce = 1.0f;
+                landerRigidBody2D.AddTorque(rotationForce * Time.deltaTime, ForceMode2D.Impulse);
 
-            // set event for lander visual
-            OnLeftForce?.Invoke(this, EventArgs.Empty);
-        }
+                // set event for lander visual
+                OnLeftForce?.Invoke(this, EventArgs.Empty);
+            }
 
-        if (Keyboard.current.rightArrowKey.isPressed)
-        {
-            const float rotationForce = -1.0f;
-            landerRigidBody2D.AddTorque(rotationForce * Time.deltaTime, ForceMode2D.Impulse);
+            if (GameInput.Instance.IsRightActionPressed() || GameInput.Instance.GetMovementInputVector().x > gamepadDeadzone)
+            {
+                const float rotationForce = -1.0f;
+                landerRigidBody2D.AddTorque(rotationForce * Time.deltaTime, ForceMode2D.Impulse);
 
-            // set event for lander visual
-            OnRightForce?.Invoke(this, EventArgs.Empty);
+                // set event for lander visual
+                OnRightForce?.Invoke(this, EventArgs.Empty);
+            }
         }
     }
 
     private void OnCollisionEnter2D(Collision2D collision2D)
     {
         float maxLandingScoreToGet = maxLandingScore;
+        landingSpeed = collision2D.relativeVelocity.magnitude;
+        collision2D.gameObject.TryGetComponent(out LandingPad landingPad);
 
         // Check if the landing is on landing pad
-        if (!collision2D.gameObject.TryGetComponent(out LandingPad landingPad))
+        if (!isLanderStopped && !landingPad)
         {
             Debug.Log("Crashed on the Terrain!");
+            landingType = LandingType.WrongLandingArea;
 
             isLanderStopped = true;
             maxLandingScoreToGet = 0f;
-            Debug.Log("Landing Score: " + maxLandingScoreToGet);
-            return;
+        }
+
+        // Define a max landing angle for successful landing
+        dotProductOnLanding = Vector2.Dot(Vector2.up, transform.up);
+        if (!isLanderStopped && dotProductOnLanding < maxLandingRotationLimit)
+        {
+            Debug.Log("Landing angle is too steep!");
+            landingType = LandingType.TooSteepAngle;
+
+            isLanderStopped = true;
+            maxLandingScoreToGet = 0f;
         }
 
         // Define a max landing speed for successful landing
-        if (collision2D.relativeVelocity.magnitude > maxSuccessfulLandingVelocityLimit)
+        if (!isLanderStopped && collision2D.relativeVelocity.magnitude > maxSuccessfulLandingVelocityLimit)
         {
             Debug.Log("Landing is too fast!");
+            landingType = LandingType.TooFastLanding;
 
             isLanderStopped = true;
             maxLandingScoreToGet = 0f;
-            Debug.Log("Landing Score: " + maxLandingScoreToGet);
-            return;
         }
 
-        // Define a max langding angle for successful landing
-        float dotProductOnLanding = Vector2.Dot(Vector2.up, transform.up);
-        if (dotProductOnLanding < maxLandingRotationLimit)
+        if (landingType == LandingType.Success)
         {
-            Debug.Log("Landing angle is too steep!");
+            if (!isLanderStopped && landerRigidBody2D.linearVelocityX < 1e-3 && landerRigidBody2D.linearVelocityY < 1e-3)
+            {
+                landingMultiplier = landingPad.GetScoreMultiplier();
+                actualLandingScore = CalculateLandingScore(
+                    maxLandingScoreToGet,
+                    collision2D.relativeVelocity.magnitude,
+                    dotProductOnLanding,
+                    landingMultiplier
+                );
 
-            isLanderStopped = true;
-            maxLandingScoreToGet = 0f;
-            Debug.Log("Landing Score: " + maxLandingScoreToGet);
-            return;
+                OnLanderLand?.Invoke(this, new OnLanderLandEventArgs
+                {
+                    landingSpeed = landingSpeed,
+                    landingAngle = dotProductOnLanding,
+                    landingMultiplier = landingMultiplier,
+                    landingScore = actualLandingScore,
+                    landingType = landingType,
+                    crashReason = crashReasonDict[landingType],
+                });
+            }
         }
-
-        actualLandingScore = CalculateLandingScore(
-            maxLandingScoreToGet,
-            collision2D.relativeVelocity.magnitude,
-            dotProductOnLanding,
-            landingPad.GetScoreMultiplier()
-        );
-    }
-
-    private void OnCollisionStay2D(Collision2D collision2D)
-    {
-        // print the calculated score just the first time when the lander is fully stopped
-        if (
-            !isLanderStopped &&
-            (landerRigidBody2D.angularVelocity < 1e-3) &&
-            (landerRigidBody2D.linearVelocity.magnitude < 1e-3)
-        )
+        else
         {
-            isLanderStopped = true;
-            Debug.Log("Landing is successful!");
-            Debug.Log("Landing Score: " + actualLandingScore);
-            OnLanderLand?.Invoke(this, new OnLanderLandEventArgs { landingScore = actualLandingScore });
+            OnLanderLand?.Invoke(this, new OnLanderLandEventArgs
+            {
+                landingType = landingType,
+                crashReason = crashReasonDict[landingType],
+            });
         }
     }
 
@@ -148,6 +191,7 @@ public class Lander : MonoBehaviour
             float AddFuelAmount = 5.0f;
             totalFuelAmount += AddFuelAmount;
             totalFuelAmount = Mathf.Min(totalFuelAmount, maxTotalFuelAmount);
+            OnFuelPickup?.Invoke(this, EventArgs.Empty);
             fuelPickup.SelfDestroy();
         }
         else if (collider2D.gameObject.TryGetComponent(out CoinPickup coinPickup))

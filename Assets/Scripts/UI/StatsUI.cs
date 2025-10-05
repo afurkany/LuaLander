@@ -21,6 +21,7 @@ public class StatsUI : MonoBehaviour
     private void UpdateStatsTextMesh()
     {
         statsTextMesh.text =
+            GameManager.Instance.GetLevel() + "\n" +
             GameManager.Instance.GetScore() + "\n" +
             Mathf.RoundToInt(GameManager.Instance.GetTime()) + "\n" +
             Mathf.Abs(Mathf.RoundToInt(Lander.Instance.GetSpeedX())) + "\n" +
