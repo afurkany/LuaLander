@@ -25,9 +25,8 @@ public class Lander : MonoBehaviour
     public event EventHandler OnRightForce;
     public event EventHandler OnBeforeForce;
     public event EventHandler OnAfterForce;
-    public event EventHandler OnCoinPickup;
-    public event EventHandler OnFuelPickup;
-
+    public event EventHandler<OnCoinPickupEventArgs> OnCoinPickup;
+    public event EventHandler<OnFuelPickupEventArgs> OnFuelPickup;
     public event EventHandler<OnLanderLandEventArgs> OnLanderLand;
     public class OnLanderLandEventArgs : EventArgs
     {
@@ -37,6 +36,16 @@ public class Lander : MonoBehaviour
         public int landingScore;
         public LandingType landingType;
         public string crashReason;
+    }
+
+    public class OnCoinPickupEventArgs : EventArgs
+    {
+        public Vector3 position;
+    }
+
+    public class OnFuelPickupEventArgs : EventArgs
+    {
+        public Vector3 position;
     }
 
     public enum LandingType
@@ -191,14 +200,25 @@ public class Lander : MonoBehaviour
             float AddFuelAmount = 5.0f;
             totalFuelAmount += AddFuelAmount;
             totalFuelAmount = Mathf.Min(totalFuelAmount, maxTotalFuelAmount);
-            OnFuelPickup?.Invoke(this, EventArgs.Empty);
+            OnFuelPickup?.Invoke(this, new OnFuelPickupEventArgs
+            {
+                position = fuelPickup.transform.position
+            });
             fuelPickup.SelfDestroy();
         }
         else if (collider2D.gameObject.TryGetComponent(out CoinPickup coinPickup))
         {
-            OnCoinPickup?.Invoke(this, EventArgs.Empty);
+            OnCoinPickup?.Invoke(this, new OnCoinPickupEventArgs
+            {
+                position = coinPickup.transform.position
+            });
             coinPickup.SelfDestroy();
         }
+    }
+
+    private void OnTriggerExit2D(Collider2D collider2D)
+    {
+
     }
 
     private int CalculateLandingScore(
