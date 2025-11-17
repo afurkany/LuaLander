@@ -10,7 +10,7 @@ public class SoundManager : MonoBehaviour
     [SerializeField] private AudioClip landingSuccessAudioClip;
     [SerializeField] private AudioClip crashAudioClip;
 
-    private static int soundLevel = 5;
+    private static int soundLevel = 0;
     private const int MAX_SOUND_LEVEL = 10;
 
     public event EventHandler OnSoundChange;

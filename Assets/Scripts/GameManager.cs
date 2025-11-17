@@ -29,6 +29,7 @@ public class GameManager : MonoBehaviour
     private bool isLanderFocused = false;
     private GameLevel spawnedGameLevel;
 
+    public const int SCORE_PER_COIN = 1000;
     public event EventHandler OnGamePaused;
     public event EventHandler OnGameUnpaused;
 
@@ -121,8 +122,7 @@ public class GameManager : MonoBehaviour
 
     private void Lander_OnCoinPickup(object sender, System.EventArgs e)
     {
-        const int coinPickupScore = 500;
-        AddScore(coinPickupScore);
+        AddScore(SCORE_PER_COIN);
     }
 
     private void Lander_OnLanderLand(object sender, Lander.OnLanderLandEventArgs e)
